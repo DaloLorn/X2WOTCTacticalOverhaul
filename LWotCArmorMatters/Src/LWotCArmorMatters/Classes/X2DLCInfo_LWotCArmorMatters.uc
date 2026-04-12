@@ -68,8 +68,17 @@ static event OnPostTemplatesCreated()
 {
 	if(default.bEnableAblativeArmor) EditArmors();
     if(default.bEnableArmoredPlating) EditPlatings();
+    if(`CoverDR.default.COVER_NO_DEFENSE_IN_MIN_RANGE) {
+        class'CHHelpers'.static.GetCDO().AddOverrideCoverLevelCallback(OnOverrideCoverLevel);
+        class'CHHelpers'.static.GetCDO().AddAdjustArmorMitigationCallback(OnAdjustArmorMitigation);
+    }
+    if(`DamageOverhaul.default.DAMAGE_OVERHAUL_ENABLED) {
+        `CHCDO.AddOverrideDefenseBypassCallback(OnOverrideDefenseBypass);
+        `DamageOverhaul.static.EditUnits();
+        `DamageOverhaul.static.EditWeapons();
+        `DamageOverhaul.static.EditAbilities();
+    }
 }
-
 static function EditArmors()
 {
     local X2ItemTemplateManager ItemTemplateMgr;
@@ -106,7 +115,7 @@ static function EditArmors()
                 {
                     `LOG("---------Additional ablative: " $ default.iAdditionalAblative * default.iAblativeMultiplier, default.bEnableLog, 'LWotCArmorMatters');
                     TotalAblative = TotalHPMarkUps + default.iAdditionalAblative * default.iAblativeMultiplier;
-                    ArmorTemplate.Abilities.AddItem('DL_AblativeForArmor');
+                    ArmorTemplate.Abilities.AddItem('DL_AblativeArmor');
                 }
                 else
                 {
@@ -303,3 +312,201 @@ static function int ConvertHPToAblative(array<name> Abilities)
     } 
     return TotalHPMarkUps + TotalAblative;
 }
+
+/*****************
+ *** DELEGATES ***
+ *****************/
+
+static function EHLDelegateReturn OnOverrideCoverLevel(XComGameState_Unit UnitState, XComGameState_Unit TargetState, out GameRulesCache_VisibilityInfo VisInfo, Object EventSource) {
+    local ECoverType TargetCover;
+
+    if (EventSource.IsA(`CoverDR.Name))
+    {
+		`LOG("OnOverrideCoverLevel: ABORT - Event is internal!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        return EHLDR_NoInterrupt;
+    }
+
+    `LOG("OnOverrideCoverLevel: Received event from a " $ EventSource.Class.Name $ " with cover level " $ VisInfo.TargetCover, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+    if (TargetState.IsDead() || TargetState.IsBleedingOut())
+    {
+		`LOG("OnOverrideCoverLevel: ABORT - Target is dead or dying!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        return EHLDR_NoInterrupt;
+    }
+
+    VisInfo.TargetCover = `CoverDR.static.EvalMinimumCoverDistance(VisInfo.TargetCover, UnitState, TargetState);
+
+    `LOG("OnOverrideCoverLevel: Cover level after minimums is " $ VisInfo.TargetCover, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+    return EHLDR_NoInterrupt;
+}
+
+
+static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out int ArmorMitigation, out int ArmorPiercing, out int MinMitigation, EffectAppliedData ApplyEffectParams, X2Effect_ApplyWeaponDamage DamageEffect, optional bool IsMinDamagePreview, optional XComGameState GameState) {
+    local ECoverType TargetCover;
+    local float CoverDR, CoverDRMult;
+    local int NetCoverDR;
+
+    local XComGameState_Unit kSourceUnit, kTarget;
+    local XComGameState_Ability kAbility;
+    local Array<Vector> HitLocations;
+    local bool IsDamagePreview;
+    
+    local XComGameStateHistory History;
+    local X2AbilityToHitCalc_StandardAim StandardAim;
+
+    History = `XCOMHISTORY;
+
+    if(GameState == none) {
+        `LOG("OnAdjustArmorMitigation: Preview event received with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+
+    kSourceUnit = XComGameState_Unit(History.GetGameStateForObjectID(ApplyEffectParams.SourceStateObjectRef.ObjectID));
+    kTarget = XComGameState_Unit(History.GetGameStateForObjectID(ApplyEffectParams.TargetStateObjectRef.ObjectID));
+    kAbility = XComGameState_Ability(History.GetGameStateForObjectID(ApplyEffectParams.AbilityStateObjectRef.ObjectID));
+
+    if(kSourceUnit == none || kTarget == none || kAbility == none || kTarget.IsDead() || kTarget.IsBleedingOut())
+    {
+		`LOG("OnAdjustArmorMitigation: ABORT - Event objects are invalid!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+        if(GameState == none) {
+            `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+        return EHLDR_NoInterrupt;
+    }
+
+    if(GameState == none) {
+        `LOG("OnAdjustArmorMitigation: Preview event objects are: Source = " $ kSourceUnit.GetFullName() $ ", Target = " $ kTarget.GetFullName() $ ", Ability = " $ kAbility.GetMyTemplate().DataName, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+
+    CoverDRMult = 1;
+    StandardAim = X2AbilityToHitCalc_StandardAim(kAbility.GetMyTemplate().AbilityToHitCalc);
+	if (!`CoverDR.default.COVER_DR_AFFECTS_MELEE && ((StandardAim != none && StandardAim.bMeleeAttack) || kAbility.GetMyTemplate().AbilityTargetStyle.IsA('X2AbilityTarget_MovingMelee')))
+	{
+		`LOG("OnAdjustArmorMitigation: ABORT - Is a melee attack!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+        if(GameState == none) {
+            `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+		return EHLDR_NoInterrupt;
+	}
+    if(StandardAim != none && (StandardAim.bIgnoreCoverBonus || kSourceUnit.HasAbilityFromAnySource('ARFMPYP_StationaryTyrants')))
+    {
+        `LOG("OnAdjustArmorMitigation: ABORT - Attack ignores cover bonuses!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+        if(GameState == none) {
+            `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+        return EHLDR_NoInterrupt;
+    }
+
+    if (kSourceUnit.HasAbilityFromAnySource('F_SurgicalPrecision') && (StandardAim == none || !StandardAim.bReactionFire))
+    {
+        CoverDRMult -= 0.5;
+    }
+    if (kSourceUnit.HasAbilityFromAnySource('F_SensePanic') && (kTarget.IsPanicked() || kTarget.IsDisoriented() || kTarget.IsDazed() || kTarget.IsStunned()))
+    {
+        CoverDRMult -= 0.5;
+    }
+    if(StandardAim != none && StandardAim.bReactionFire)
+    {
+        if(kSourceUnit.HasAbilityFromAnySource('AHWHeavyMechtoidOverwatchPassive')) {
+            `LOG("OnAdjustArmorMitigation: ABORT - Attack ignores cover bonuses!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            if(GameState == none) {
+                `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            }
+            return EHLDR_NoInterrupt;
+        }
+        if(kSourceUnit.HasAbilityFromAnySource('F_Opportunist'))
+            CoverDRMult -= 0.5;
+        if(kSourceUnit.AffectedByEffectNames.Find('IRI_X2Effect_SP_CoveringFireIgnoreCover_Effect_LW') != -1)
+            CoverDRMult -= 0.66;
+    }
+
+    if(CoverDRMult <= 0) {
+            `LOG("OnAdjustArmorMitigation: ABORT - DR multiplier is nonpositive, no DR remains!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            if(GameState == none) {
+                `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            }
+            return EHLDR_NoInterrupt;
+    }
+
+    HitLocations = ApplyEffectParams.AbilityInputContext.TargetLocations;
+    IsDamagePreview = GameState == none;
+
+    TargetCover = `CoverDR.static.GetCoverDRLevel(kSourceUnit, kTarget, kAbility.GetMyTemplate(), HitLocations, GameState == none);
+    // It's a *tad* too soon to calculate against incoming damage,
+    // as we may have to deal with explosive falloff possibly setting damage to zero...
+    // but to be fair, that *is* consistent with regular armor!
+    switch (TargetCover) {
+        case CT_MidLevel:
+            CoverDR = fmin(`CoverDR.default.COVER_DR_FLAT_LOW + WeaponDamage * `CoverDR.default.COVER_DR_PERCENT_LOW, `CoverDR.default.COVER_DR_MAX_LOW) * CoverDRMult;
+            break;
+        case CT_Standing:
+            CoverDR = fmin(`CoverDR.default.COVER_DR_FLAT_HIGH + WeaponDamage * `CoverDR.default.COVER_DR_PERCENT_HIGH, `CoverDR.default.COVER_DR_MAX_HIGH) * CoverDRMult;
+            break;
+        default:
+            if(GameState == none) {
+                `LOG("OnAdjustArmorMitigation: Preview event returned with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            }
+            return EHLDR_NoInterrupt;
+    }
+    NetCoverDR = int(CoverDR);
+
+    // Handle fractional DR!
+    if(IsDamagePreview) 
+    {
+        NetCoverDR = IsMinDamagePreview ? FCeil(CoverDR) : FFloor(CoverDR);
+    }
+    else if (DamageEffect.PlusOneDamage(int((CoverDR - NetCoverDR) * 100)))
+    {
+        NetCoverDR++;
+    }
+
+    // If cover DR is impenetrable, then the minimum mitigation
+    // is no longer 0!
+    if (`CoverDR.default.COVER_DR_IMPENETRABLE && NetCoverDR > 0)
+    {
+        MinMitigation += NetCoverDR;
+    }
+    `LOG("Cover DR! Multiplier: " $ CoverDRMult $ " Cover DR value: " $ NetCoverDR $ " Leftover armor piercing value: " $ ArmorPiercing - ArmorMitigation, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+    ArmorMitigation += NetCoverDR;
+
+    if(GameState == none) {
+        `LOG("OnAdjustArmorMitigation: Preview event returned with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+    return EHLDR_NoInterrupt;
+}
+
+static function EHLDelegateReturn OnOverrideDefenseBypass(array<name> AppliedDamageTypes, out int bIgnoreArmor, out int bIgnoreShields, EffectAppliedData ApplyEffectParams, X2Effect_ApplyWeaponDamage DamageEffect, optional XComGameState NewGameState) {
+    local name DamageType;
+
+    foreach AppliedDamageTypes(DamageType) {
+        if(`DamageOverhaul.default.IRRELEVANT_DAMAGE_TYPES.Find(DamageType) == -1)
+            break;
+        `LOG("OnOverrideDefenseBypass: Ignored irrelevant damage type " $ DamageType, `DamageOverhaul.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+
+    `LOG("OnOverrideDefenseBypass: Detected primary damage type " $ DamageType $ ", extra type " $ DamageEffect.EffectDamageValue.DamageType, `DamageOverhaul.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    if (`DamageOverhaul.default.DAMAGE_IGNORES_ARMOR.Find(DamageType) != -1 || `DamageOverhaul.default.DAMAGE_IGNORES_ARMOR.Find(DamageEffect.EffectDamageValue.DamageType) != -1)
+        bIgnoreArmor = 1;
+    if (`DamageOverhaul.default.DAMAGE_IGNORES_ABLATIVE.Find(DamageType) != -1 || `DamageOverhaul.default.DAMAGE_IGNORES_ABLATIVE.Find(DamageEffect.EffectDamageValue.DamageType) != -1)
+        bIgnoreShields = 1;
+    foreach AppliedDamageTypes(DamageType) {
+        `LOG("OnOverrideDefenseBypass: Detected damage type " $ DamageType, `DamageOverhaul.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+
+    foreach DamageEffect.DamageTypes(DamageType) {
+        `LOG("OnOverrideDefenseBypass: Detected ability damage type " $ DamageType, `DamageOverhaul.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        if(`DamageOverhaul.default.DAMAGE_IGNORES_ARMOR.Find(DamageType) != -1)
+            bIgnoreArmor = 1;
+        if(`DamageOverhaul.default.DAMAGE_IGNORES_ABLATIVE.Find(DamageType) != -1)
+            bIgnoreShields = 1;
+    }
+
+    `LOG("OnOverrideDefenseBypass: Armor bypass is " $ bool(bIgnoreArmor) $ ", ablative bypass is " $ bool(bIgnoreShields), `DamageOverhaul.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+    return EHLDR_NoInterrupt;
+}
+

@@ -19,3 +19,9 @@
 `define GetConfigArrayFloat(VarName) class'ConfigEngine'.static.GetConfigArrayFloat(`VarName)
 `define GetConfigArrayName(VarName) class'ConfigEngine'.static.GetConfigArrayName(`VarName)
 `define GetConfigDamage(VarName) class'ConfigEngine'.static.GetConfigDamage(`VarName)
+
+`define ADD_EVENT_LISTENER(Array, Event, Module) `{Array}.AddItem(class'Helpers_EventListener'.static.createCHEventListener('`{Event}', 'DL_`{Module}_`{Event}Listener', On`{Event}))
+
+`define DamageOverhaul class'X2EventListener_DamageOverhaul'
+`define CoverDR class'Helpers_CoverDR'
+`define CHCDO class'CHHelpers'.static.GetCDO()
