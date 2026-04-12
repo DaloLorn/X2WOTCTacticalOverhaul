@@ -1,6 +1,6 @@
 # XCOM 2: War of the Chosen: Tactical Overhaul
 
-A collection of highly configurable modules intended to heavily alter the rules of tactical combat in XCOM 2: War of the Chosen.
+A collection of highly configurable modules intended to heavily alter the rules of tactical combat in XCOM 2: War of the Chosen, taking some inspiration from the Long War Rebalance mod for XCOM: Enemy Within.
 
 Developed in the LWotC/Mod Jam/Ted Jam environment, but *should* function in other contexts (e.g. vanilla or Covert Infiltration) if appropriate configs are provided, as most rule-changing mods revolve around the strategy layer.
 
@@ -42,7 +42,8 @@ All config options from Anisotropic's mod have been migrated to this module, and
 - Cover no longer provides any protection from direct attacks at close range, as in Long War Rebalance. (The target is essentially treated as flanked at that range.)
   - By default, low cover becomes ineffective at a distance of 2 tiles or closer, while high cover becomes ineffective at 1 tile or closer. (Diagonals are approximately 1.5 tiles long.)
   - Regardless of this feature, melee attacks are not affected by cover DR (unless configured otherwise, but that config is not guaranteed to work correctly).
-- Cover now provides 30/50% percentile DR, as in Long War Rebalance, up from 0.33/1.0 flat DR. It is also limited to blocking a maximum of up to 8/16 HP.
+- Cover now provides 30/50% percentile DR, as in Long War Rebalance, up from 0.33/1.0 flat DR. It is also limited to blocking a maximum of up to 8.0/16.0 damage.
+- Abilities which reduce the effects of cover (e.g. Surgical Precision) have a proportional effect on cover DR where applicable. They also reduce maximum DR by the same percentage.
 
 ## Damage Overhaul
 
