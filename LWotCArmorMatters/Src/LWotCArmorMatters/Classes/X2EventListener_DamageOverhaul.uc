@@ -21,6 +21,12 @@ struct DamageSwapEntry {
 };
 var config array<DamageSwapEntry> WEAPON_DAMAGE_SWAP;
 
+struct DOTRescheduleEntry {
+    var name DamageType;
+    var GameRuleStateChange Schedule;
+};
+var config array<DOTRescheduleEntry> CHANGE_DOT_SCHEDULES;
+
 static function EditUnits() {
     local X2CharacterTemplateManager TemplateManager;
     local array<X2DataTemplate> DiffTemplates;
@@ -96,41 +102,70 @@ static function EditWeapons() {
 static function EditAbilities() {
     local name AbilityName;
     local X2AbilityTemplateManager TemplateManager;
+    local X2DataTemplate Template;
     local X2AbilityTemplate AbilityTemplate;
-    local X2Effect Effect;
+    local X2Effect Effect, TickEffect;
+    local X2Effect_Persistent PersistentEffect;
     local X2Effect_PersistentStatChange StatChangeEffect;
-    local int i, OriginalLength;
+    local X2Effect_ApplyWeaponDamage DamageEffect;
+    local int i, OriginalLength, RescheduleIndex;
     local StatChange StatChange, NewStatChange;
+    local DOTRescheduleEntry RescheduleEntry;
 
     TemplateManager = class'X2AbilityTemplateManager'.static.GetAbilityTemplateManager();
 
-    foreach default.HEALTH_BUFF_ABILITIES(AbilityName) {
-        `LOG("Damage Overhaul: Attempting to update ability " $ AbilityName $ " to add shield HP multiplier", default.ENABLE_LOGGING, 'LWotCArmorMatters');
-        AbilityTemplate = TemplateManager.FindAbilityTemplate(AbilityName);
+    foreach TemplateManager.IterateTemplates(Template) {
+        AbilityTemplate = X2AbilityTemplate(Template);
 
         if(AbilityTemplate == none) {
-            `LOG("---Ability does not exist", default.ENABLE_LOGGING, 'LWotCArmorMatters');
             continue;
         }
 
-        foreach AbilityTemplate.AbilityTargetEffects(Effect) {
-            StatChangeEffect = X2Effect_PersistentStatChange(Effect);
+        if(default.HEALTH_BUFF_ABILITIES.Find(AbilityTemplate.DataName) != -1) {
+            `LOG("Damage Overhaul: Attempting to update ability " $ AbilityTemplate.DataName $ " to add shield HP multiplier", default.ENABLE_LOGGING, 'LWotCArmorMatters');
 
-            if(StatChangeEffect == none)
-                continue;
-            OriginalLength = StatChangeEffect.m_aStatChanges.Length;
-                
-            for(i = 0; i < OriginalLength; i++) {
-                StatChange = StatChangeEffect.m_aStatChanges[i];
-                if(StatChange.StatType != eStat_HP || StatChange.ModOp == MODOP_Addition)
+            foreach AbilityTemplate.AbilityTargetEffects(Effect) {
+                StatChangeEffect = X2Effect_PersistentStatChange(Effect);
+
+                if(StatChangeEffect == none)
                     continue;
+                OriginalLength = StatChangeEffect.m_aStatChanges.Length;
                     
-                NewStatChange.StatAmount = StatChange.StatAmount;
-                NewStatChange.ApplicationRule = StatChange.ApplicationRule;
-                NewStatChange.ModOp = StatChange.ModOp;                  
-                NewStatChange.StatType = eStat_ShieldHP;
-                `LOG("------Added shield multiplier " $ NewStatChange.StatAmount $ " with operator " $ NewStatChange.ModOp, default.ENABLE_LOGGING, 'LWotCArmorMatters');
-                StatChangeEffect.m_aStatChanges.AddItem(NewStatChange);
+                for(i = 0; i < OriginalLength; i++) {
+                    StatChange = StatChangeEffect.m_aStatChanges[i];
+                    if(StatChange.StatType != eStat_HP || StatChange.ModOp == MODOP_Addition)
+                        continue;
+                        
+                    NewStatChange.StatAmount = StatChange.StatAmount;
+                    NewStatChange.ApplicationRule = StatChange.ApplicationRule;
+                    NewStatChange.ModOp = StatChange.ModOp;                  
+                    NewStatChange.StatType = eStat_ShieldHP;
+                    `LOG("------Added shield multiplier " $ NewStatChange.StatAmount $ " with operator " $ NewStatChange.ModOp, default.ENABLE_LOGGING, 'LWotCArmorMatters');
+                    StatChangeEffect.m_aStatChanges.AddItem(NewStatChange);
+                }
+            }
+        }
+
+        foreach AbilityTemplate.AbilityTargetEffects(Effect) {
+            PersistentEffect = X2Effect_Persistent(Effect);
+
+            if(PersistentEffect == none)
+                continue;
+            
+            foreach PersistentEffect.ApplyOnTick(TickEffect) {
+                DamageEffect = X2Effect_ApplyWeaponDamage(TickEffect);
+
+                if(DamageEffect == none)
+                    continue;
+
+                RescheduleIndex = default.CHANGE_DOT_SCHEDULES.Find('DamageType', DamageEffect.EffectDamageValue.DamageType);
+
+                if(RescheduleIndex != -1) {
+                    RescheduleEntry = default.CHANGE_DOT_SCHEDULES[RescheduleIndex];
+                    `LOG("Damage Overhaul: Detected DoT with damage type " $ DamageEffect.EffectDamageValue.DamageType $ " in ability " $ AbilityTemplate.DataName $ ", setting to tick on " $ RescheduleEntry.Schedule, default.ENABLE_LOGGING, 'LWotCArmorMatters');
+                    
+                    PersistentEffect.WatchRule = RescheduleEntry.Schedule;
+                }
             }
         }
     }
