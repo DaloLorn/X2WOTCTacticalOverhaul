@@ -365,12 +365,20 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     kTarget = XComGameState_Unit(History.GetGameStateForObjectID(ApplyEffectParams.TargetStateObjectRef.ObjectID));
     kAbility = XComGameState_Ability(History.GetGameStateForObjectID(ApplyEffectParams.AbilityStateObjectRef.ObjectID));
 
+    if(GameState != none) {
+        kTarget = XComGameState_Unit(GameState.GetGameStateForObjectID(ApplyEffectParams.TargetStateObjectRef.ObjectID));
+    }
+
     if(kSourceUnit == none || kTarget == none || kAbility == none || kTarget.IsDead() || kTarget.IsBleedingOut())
     {
 		`LOG("OnAdjustArmorMitigation: ABORT - Event objects are invalid!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
 
         if(GameState == none) {
             `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+        else {
+            kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+            kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
         }
         return EHLDR_NoInterrupt;
     }
@@ -388,6 +396,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
         if(GameState == none) {
             `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
         }
+        else {
+            kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+            kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
+        }
 		return EHLDR_NoInterrupt;
 	}
     if(StandardAim != none && (StandardAim.bIgnoreCoverBonus || kSourceUnit.HasAbilityFromAnySource('ARFMPYP_StationaryTyrants')))
@@ -396,6 +408,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
 
         if(GameState == none) {
             `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+        else {
+            kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+            kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
         }
         return EHLDR_NoInterrupt;
     }
@@ -415,6 +431,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
             if(GameState == none) {
                 `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
             }
+            else {
+                kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+                kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
+            }
             return EHLDR_NoInterrupt;
         }
         if(kSourceUnit.HasAbilityFromAnySource('F_Opportunist'))
@@ -424,11 +444,15 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     }
 
     if(CoverDRMult <= 0) {
-            `LOG("OnAdjustArmorMitigation: ABORT - DR multiplier is nonpositive, no DR remains!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
-            if(GameState == none) {
-                `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
-            }
-            return EHLDR_NoInterrupt;
+        `LOG("OnAdjustArmorMitigation: ABORT - DR multiplier is nonpositive, no DR remains!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        if(GameState == none) {
+            `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
+        else {
+            kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+            kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
+        }
+        return EHLDR_NoInterrupt;
     }
 
     HitLocations = ApplyEffectParams.AbilityInputContext.TargetLocations;
@@ -448,6 +472,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
         default:
             if(GameState == none) {
                 `LOG("OnAdjustArmorMitigation: Preview event returned with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+            }
+            else {
+                kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+                kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
             }
             return EHLDR_NoInterrupt;
     }
@@ -475,6 +503,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
 
     if(GameState == none) {
         `LOG("OnAdjustArmorMitigation: Preview event returned with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    }
+    else {
+        kTarget.SetUnitFloatValue('DL_NetCoverDR', max(MinMitigation, NetCoverDR - (ArmorPiercing - (ArmorMitigation - NetCoverDR))));
+        kTarget.SetUnitFloatValue('DL_CoverLevel', TargetCover);
     }
     return EHLDR_NoInterrupt;
 }

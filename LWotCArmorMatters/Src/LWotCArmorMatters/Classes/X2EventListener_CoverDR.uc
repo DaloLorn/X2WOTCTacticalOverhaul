@@ -24,6 +24,9 @@ static function EventListenerReturn OnEditMitigationMessages(Object EventData, O
     local string CoverMessage;
     local int CoverDR;
     local array<XComLWTValueKind> ExpectedTypes;
+    local XComGameState_Unit UnitState;
+    local X2Effect_ApplyWeaponDamage DamageEffect;
+    local UnitValue DRValue, CoverValue;
 
     Message = XComLWTuple(EventData);
     ExpectedTypes.Length = 2;
@@ -37,26 +40,29 @@ static function EventListenerReturn OnEditMitigationMessages(Object EventData, O
 		`LOG("OnEditMitigationMessages: ABORT - Event is invalid!", class'Helpers_CoverDR'.default.ENABLE_LOGGING, 'LWotCArmorMatters');
         return ELR_NoInterrupt;
     }
+
+    DamageEffect = X2Effect_ApplyWeaponDamage(DamageAction.OriginatingEffect);
     
-    if (DamageAction.TickContext != none || DamageAction.SourceUnitState == none || DamageAction.AbilityTemplate == none || DamageAction.AbilityContext == none)
+    if (DamageEffect == none || DamageAction.TickContext != none || DamageAction.SourceUnitState == none || DamageAction.AbilityTemplate == none || DamageAction.AbilityContext == none)
     {
 		`LOG("OnEditMitigationMessages: ABORT - Damage not caused by an attack!", class'Helpers_CoverDR'.default.ENABLE_LOGGING, 'LWotCArmorMatters');
         return ELR_NoInterrupt;
     }
 
-    // We shouldn't be computing this like that,
-    // but I don't know how to properly pass the original DR
-    // along from X2Effect_ApplyWeaponDamage. :(
-    CoverDR = DamageAction.m_iMitigated - XComGameState_Unit(DamageAction.UnitState.GetPreviousVersion()).GetArmorMitigationForUnitFlag();
-    `LOG("Mitigation = " $ DamageAction.m_iMitigated $ ", Armor = " $ XComGameState_Unit(DamageAction.UnitState.GetPreviousVersion()).GetArmorMitigationForUnitFlag() $ ", Shred = " $ DamageAction.m_iShredded $ ", Cover DR = " $ CoverDR, class'Helpers_CoverDR'.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    UnitState = DamageAction.UnitState;
+    UnitState.GetUnitValue('DL_NetCoverDR', DRValue);
+    UnitState.GetUnitValue('DL_CoverLevel', CoverValue);
 
+    CoverDR = int(DRValue.fValue);
+    UnitCover = ECoverType(int(CoverValue.fValue));
+    `LOG("Mitigation = " $ DamageAction.m_iMitigated $ ", Armor = " $ XComGameState_Unit(UnitState.GetPreviousVersion()).GetArmorMitigationForUnitFlag() $ ", Shred = " $ DamageAction.m_iShredded $ ", Cover DR = " $ CoverDR $ " with Cover Level " $ UnitCover, class'Helpers_CoverDR'.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+    
     if (CoverDR < 1)
     {
 		`LOG("OnEditMitigationMessages: ABORT - Cover DR is nonpositive!", class'Helpers_CoverDR'.default.ENABLE_LOGGING, 'LWotCArmorMatters');
         return ELR_NoInterrupt;
     }
 
-    UnitCover = class'Helpers_CoverDR'.static.GetCoverDRLevel(XComGameState_Unit(DamageAction.SourceUnitState.GetPreviousVersion()), XComGameState_Unit(DamageAction.UnitState.GetPreviousVersion()), DamageAction.AbilityTemplate, DamageAction.AbilityContext.InputContext.TargetLocations, false, DamageAction.SourceUnitState.GetPreviousVersion().GetParentGameState().HistoryIndex);
     switch (UnitCover)
     {
         case CT_MidLevel:
