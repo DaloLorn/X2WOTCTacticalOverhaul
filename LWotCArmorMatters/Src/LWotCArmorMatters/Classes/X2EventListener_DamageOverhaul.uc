@@ -168,5 +168,28 @@ static function EditAbilities() {
                 }
             }
         }
+
+        foreach AbilityTemplate.AbilityMultiTargetEffects(Effect) {
+            PersistentEffect = X2Effect_Persistent(Effect);
+
+            if(PersistentEffect == none)
+                continue;
+            
+            foreach PersistentEffect.ApplyOnTick(TickEffect) {
+                DamageEffect = X2Effect_ApplyWeaponDamage(TickEffect);
+
+                if(DamageEffect == none)
+                    continue;
+
+                RescheduleIndex = default.CHANGE_DOT_SCHEDULES.Find('DamageType', DamageEffect.EffectDamageValue.DamageType);
+
+                if(RescheduleIndex != -1) {
+                    RescheduleEntry = default.CHANGE_DOT_SCHEDULES[RescheduleIndex];
+                    `LOG("Damage Overhaul: Detected multi-target DoT with damage type " $ DamageEffect.EffectDamageValue.DamageType $ " in ability " $ AbilityTemplate.DataName $ ", setting to tick on " $ RescheduleEntry.Schedule, default.ENABLE_LOGGING, 'LWotCArmorMatters');
+                    
+                    PersistentEffect.WatchRule = RescheduleEntry.Schedule;
+                }
+            }
+        }
     }
 }
