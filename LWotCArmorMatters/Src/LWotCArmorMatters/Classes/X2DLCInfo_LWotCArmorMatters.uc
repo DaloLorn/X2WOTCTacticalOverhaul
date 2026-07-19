@@ -72,6 +72,9 @@ static event OnPostTemplatesCreated()
         class'CHHelpers'.static.GetCDO().AddOverrideCoverLevelCallback(OnOverrideCoverLevel);
         class'CHHelpers'.static.GetCDO().AddAdjustArmorMitigationCallback(OnAdjustArmorMitigation);
     }
+    if(`CoverDR.default.COVER_DR_ENABLED) {
+        `CoverDR`.static.EditAbilities();
+    }
     if(`DamageOverhaul.default.DAMAGE_OVERHAUL_ENABLED) {
         `CHCDO.AddOverrideDefenseBypassCallback(OnOverrideDefenseBypass);
         `DamageOverhaul.static.EditUnits();
@@ -346,6 +349,8 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     local ECoverType TargetCover;
     local float CoverDR, CoverDRMult;
     local int NetCoverDR;
+    local StateObjectReference EffectRef;
+    local X2Effect_Persistent Effect;
 
     local XComGameState_Unit kSourceUnit, kTarget;
     local XComGameState_Ability kAbility;
@@ -441,6 +446,16 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
             CoverDRMult -= 0.5;
         if(kSourceUnit.AffectedByEffectNames.Find('IRI_X2Effect_SP_CoveringFireIgnoreCover_Effect_LW') != -1)
             CoverDRMult -= 0.66;
+    }
+
+    if(kSourceUnit.IsHunkeredDown())
+        CoverDRMult += `CoverDR.default.HUNKER_DR_MODIFIER;
+
+    foreach(kSourceUnit.AffectedByEffects(EffectRef)) {
+        Effect = X2Effect_CoverDRModifier(XComGameState_Effect(History.GetGameStateForObjectID(EffectRef.ObjectID)).GetX2Effect());
+        if(Effect == none)
+            continue;
+        CoverDRMult += Effect.Magnitude;
     }
 
     if(CoverDRMult <= 0) {

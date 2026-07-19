@@ -234,3 +234,46 @@ static simulated function bool IsEpicenterFarEnoughForCover(Vector Epicenter, Ve
 	`LOG("IsEpicenterFarEnoughForCover: Tile distance is " $ Tiles, default.ENABLE_LOGGING,'LWotCArmorMatters');
 	return Tiles > MinimumTiles;
 }
+
+static function EditAbilities() {
+    local name AbilityName;
+    local X2AbilityTemplateManager TemplateManager;
+    local X2DataTemplate Template;
+    local X2AbilityTemplate AbilityTemplate;
+    local X2Effect Effect, TickEffect;
+    local X2Effect_Persistent PersistentEffect;
+    local int i;
+	local X2Effect_CoverDRModifier CoverDRModifier;
+
+    TemplateManager = class'X2AbilityTemplateManager'.static.GetAbilityTemplateManager();
+
+    foreach TemplateManager.IterateTemplates(Template) {
+        AbilityTemplate = X2AbilityTemplate(Template);
+
+        if(AbilityTemplate == none) {
+            continue;
+        }
+
+		for(i = 0; i < AbilityTemplate.AbilityTargetEffects.Length; i++) {
+			Effect = AbilityTemplate.AbilityTargetEffects[i];
+			if(!Effect.IsA('AHW_Effect_MutonHardy'))
+				continue;
+            `LOG("Cover DR: Detected Hardy effect on ability " $ AbilityTemplate.DataName $ ", reconstructing as CoverDRModifier +0.5...", default.ENABLE_LOGGING, 'LWotCArmorMatters');
+			PersistentEffect = X2Effect_Persistent(Effect);
+			CoverDRModifier = new class'X2Effect_CoverDRModifier';
+			CoverDRModifier.ClonePersistentEffect(PersistentEffect, 0.5);
+			AbilityTemplate.AbilityTargetEffects[i] = CoverDRModifier;
+		}
+
+		for(i = 0; i < AbilityTemplate.AbilityMultiTargetEffects.Length; i++) {
+			Effect = AbilityTemplate.AbilityMultiTargetEffects[i];
+			if(!Effect.IsA('AHW_Effect_MutonHardy'))
+				continue;
+            `LOG("Cover DR: Detected multi-target Hardy effect on ability " $ AbilityTemplate.DataName $ ", reconstructing as CoverDRModifier +0.5...", default.ENABLE_LOGGING, 'LWotCArmorMatters');
+			PersistentEffect = X2Effect_Persistent(Effect);
+			CoverDRModifier = new class'X2Effect_CoverDRModifier';
+			CoverDRModifier.ClonePersistentEffect(PersistentEffect, 0.5);
+			AbilityTemplate.AbilityMultiTargetEffects[i] = CoverDRModifier;
+		}
+    }
+}
