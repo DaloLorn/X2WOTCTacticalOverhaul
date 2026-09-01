@@ -73,7 +73,7 @@ static event OnPostTemplatesCreated()
         class'CHHelpers'.static.GetCDO().AddAdjustArmorMitigationCallback(OnAdjustArmorMitigation);
     }
     if(`CoverDR.default.COVER_DR_ENABLED) {
-        `CoverDR`.static.EditAbilities();
+        `CoverDR.static.EditAbilities();
     }
     if(`DamageOverhaul.default.DAMAGE_OVERHAUL_ENABLED) {
         `CHCDO.AddOverrideDefenseBypassCallback(OnOverrideDefenseBypass);
@@ -345,12 +345,12 @@ static function EHLDelegateReturn OnOverrideCoverLevel(XComGameState_Unit UnitSt
 }
 
 
-static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out int ArmorMitigation, out int ArmorPiercing, out int MinMitigation, EffectAppliedData ApplyEffectParams, X2Effect_ApplyWeaponDamage DamageEffect, optional bool IsMinDamagePreview, optional XComGameState GameState) {
+static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out int ArmorMitigation, out int ArmorPiercing, out int MinMitigation, out int ArmorShred, EffectAppliedData ApplyEffectParams, X2Effect_ApplyWeaponDamage DamageEffect, optional bool IsMinDamagePreview, optional XComGameState GameState) {
     local ECoverType TargetCover;
     local float CoverDR, CoverDRMult;
     local int NetCoverDR;
     local StateObjectReference EffectRef;
-    local X2Effect_Persistent Effect;
+    local X2Effect_CoverDRModifier Effect;
 
     local XComGameState_Unit kSourceUnit, kTarget;
     local XComGameState_Ability kAbility;
@@ -451,7 +451,7 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     if(kSourceUnit.IsHunkeredDown())
         CoverDRMult += `CoverDR.default.HUNKER_DR_MODIFIER;
 
-    foreach(kSourceUnit.AffectedByEffects(EffectRef)) {
+    foreach kSourceUnit.AffectedByEffects(EffectRef) {
         Effect = X2Effect_CoverDRModifier(XComGameState_Effect(History.GetGameStateForObjectID(EffectRef.ObjectID)).GetX2Effect());
         if(Effect == none)
             continue;
