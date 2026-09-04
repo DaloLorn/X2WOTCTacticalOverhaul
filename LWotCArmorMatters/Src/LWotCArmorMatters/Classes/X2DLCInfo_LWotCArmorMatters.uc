@@ -448,10 +448,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
             CoverDRMult -= 0.66;
     }
 
-    if(kSourceUnit.IsHunkeredDown())
+    if(kTarget.IsHunkeredDown())
         CoverDRMult += `CoverDR.default.HUNKER_DR_MODIFIER;
 
-    foreach kSourceUnit.AffectedByEffects(EffectRef) {
+    foreach kTarget.AffectedByEffects(EffectRef) {
         Effect = X2Effect_CoverDRModifier(XComGameState_Effect(History.GetGameStateForObjectID(EffectRef.ObjectID)).GetX2Effect());
         if(Effect == none)
             continue;
