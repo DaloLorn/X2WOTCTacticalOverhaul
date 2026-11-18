@@ -44,12 +44,14 @@ All config options from Anisotropic's mod have been migrated to this module, and
   - Regardless of this feature, melee attacks are not affected by cover DR (unless configured otherwise, but that config is not guaranteed to work correctly).
 - Cover now provides 30/50% percentile DR, as in Long War Rebalance, up from 0.33/1.0 flat DR. It is also limited to blocking a maximum of up to 8.0/16.0 damage.
 - Abilities which reduce the effects of cover (e.g. Surgical Precision) have a proportional effect on cover DR where applicable. They also reduce maximum DR by the same percentage.
+  - Hunker Down and similar abilities now increase cover DR by 50% (to 45/75% of incoming damage with default configs), in addition to their other benefits. This likewise increases maximum DR by the same amount.
+  - The Hardy ability seen on many Requiem Mutons has been changed to interact with the cover DR mechanic - in exactly the same way as hunkering - instead of having its own special cover handling.
 
 ## Damage Overhaul
 
 Taking all of the above mods and TO modules to their logical extreme, Damage Overhaul makes certain damage types ignore armor, ablative HP, or both to add depth to ADVENT's ability to hurt you... and then to make it a little fairer, makes most ADVENT units trade some HP for ablative HP!
 
-- Psi, poison, bleeding, Elerium poison (from Bio Division), and Avatar Beam damage now bypasses all defenses and goes straight to HP. (Avatar Beam damage has also been configured to bypass energy shields!)
+- Psi, poison, bleeding, Elerium poison (from Bio Division), and Avatar Beam damage now bypasses all defenses and goes straight to HP. (Avatar Beam damage has also been configured to bypass ESO energy shields!)
 - Frost, fire, napalm, electrical, radiation, strangling (Requiem Seeker), and crushing (Viper bind) damage now bypasses ablative HP.
 - XCOM's Psionic Reapers (ADVENT Psi Corps) and Warp Rifles (Expanded Playable Aliens) now deal Avatar Beam damage, in line with their visuals and lore.
 - Tesla Rifles (Reshi's Tesla Trooper class) now deal electrical damage. (IIRC they already worked correctly when attacking, but reaction fire fired bullets styled as lightning bolts.)
