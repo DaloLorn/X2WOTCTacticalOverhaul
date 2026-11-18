@@ -1,5 +1,9 @@
 # XCOM 2: War of the Chosen: Tactical Overhaul
 
+**DISCLAIMER:** Although most of its development has been human-only, the hours before the mod's Workshop release saw me run Cursor through the codebase to catch and fix any bugs I'd overlooked in playtesting, and a few I hadn't. (Turned out to be quite a lot of them, in fact!) If this is too much AI usage for your liking, I suppose you may as well stop reading now. Sorry.
+
+**DISCLAIMER #2:** The screenshots were taken from my playtests on a series of moderately customized Ted Jam campaigns. I have tried to list the most notable (tactical-layer) departures from Ted Jam below, but I've honestly lost track by this point...
+
 A collection of highly configurable modules intended to heavily alter the rules of tactical combat in XCOM 2: War of the Chosen, taking some inspiration from the Long War Rebalance mod for XCOM: Enemy Within.
 
 Developed in the LWotC/Mod Jam/Ted Jam environment, but *should* function in other contexts (e.g. vanilla or Covert Infiltration) if appropriate configs are provided, as most rule-changing mods revolve around the strategy layer.
@@ -13,11 +17,11 @@ This mod is intended to be experienced as-is, with the default configs and in ta
 
 However, these other mods are optional, and each of my modules can be configured and disabled separately. The modules are explained in more detail below.
 
+The mod's GitHub repository can be found at https://github.com/DaloLorn/X2WOTCTacticalOverhaul.
+
 ## Ablative Armor
 
 Makes XCOM's armor give ablative HP instead of regular HP, making armor upgrades increase the amount of damage you can soak before landing in the medbay (or suffering Red Fog), at the cost of limiting the effectiveness of healing in the late game.
-
-For better compatibility with the Armored Plating module (see below), and as a (very small) bone to those who really need their soldiers to receive five full medkits' worth of healing to survive a mission, all armor (including kevlar) grants an extra +1 ablative HP.
 
 This has been done before, on several occasions by different modders, e.g. Iridar's Armor Overhaul. However, those mods typically had unavoidable side effects, whereas this one is fully configurable and laser-focused on this specific functionality.
 
