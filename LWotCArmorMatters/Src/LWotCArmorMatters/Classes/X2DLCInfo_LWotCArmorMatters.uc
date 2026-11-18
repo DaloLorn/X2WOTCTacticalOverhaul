@@ -544,11 +544,13 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
 
     ArmorMitigation += NetCoverDR;
     OriginalArmor = ArmorMitigation - NetCoverDR;
-    // Show the full cover DR unless leftover pierce ate all of it.
-    CoverFlyover = NetCoverDR;
-    if (!`CoverDR.default.COVER_DR_IMPENETRABLE && Max(0, ArmorPiercing - OriginalArmor) >= NetCoverDR)
+    if (`CoverDR.default.COVER_DR_IMPENETRABLE)
     {
-        CoverFlyover = 0;
+        CoverFlyover = NetCoverDR;
+    }
+    else
+    {
+        CoverFlyover = Max(0, NetCoverDR - Max(0, ArmorPiercing - OriginalArmor));
     }
 
     if(GameState == none) {
