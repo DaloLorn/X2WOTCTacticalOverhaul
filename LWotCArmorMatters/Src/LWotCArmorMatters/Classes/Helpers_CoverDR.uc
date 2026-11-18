@@ -9,15 +9,13 @@ var config bool COVER_NO_DEFENSE_IN_MIN_RANGE;
 
 var config float COVER_DR_FLAT_LOW, COVER_DR_FLAT_HIGH;
 var config float COVER_DR_PERCENT_LOW, COVER_DR_PERCENT_HIGH;
-var config int COVER_DR_MAX_LOW, COVER_DR_MAX_HIGH;
+var config float COVER_DR_MAX_LOW, COVER_DR_MAX_HIGH;
 var config int COVER_DR_MIN_RANGE_LOW, COVER_DR_MIN_RANGE_HIGH;
 
 var config float HUNKER_DR_MODIFIER;
 
 var config ECoverType COVER_DR_UNFLANKABLE_COVER_LEVEL;
 
-var config bool PREVIEW_ARMOR_MITIGATION;
-var config bool PREVIEW_ONLY_COVER_MITIGATION;
 var config bool ENABLE_LOGGING;
 
 // Helper function to compute whether a target should benefit from cover DR.
@@ -25,13 +23,14 @@ static simulated function ECoverType GetCoverDRLevel(XComGameState_Unit SourceUn
 {
 	local GameRulesCache_VisibilityInfo VisInfo;
 	local ECoverType TargetCover;
-	local Vector TargetVector;
+	local Vector TargetVector, Epicenter;
 	local bool IsAreaOfEffect;
 	local X2GameRulesetVisibilityManager VisibilityMgr;
 	local bool CalculatedFromEpicenter;
 	local X2AbilityToHitCalc_StandardAim HitCalc;
 	local XComGameState_Unit TargetUnit;
 	local XComGameState GameState;
+	local float CoverAngle;
 
 	if(IsPreview) {
 		`LOG("GetCoverDRLevel: Invoked by preview", default.ENABLE_LOGGING, 'LWotCArmorMatters');
@@ -59,9 +58,15 @@ static simulated function ECoverType GetCoverDRLevel(XComGameState_Unit SourceUn
 		`LOG("GetCoverDRLevel: Game state exists", default.ENABLE_LOGGING, 'LWotCArmorMatters');
 	}
 
+	if (AbilityTemplate == none)
+	{
+		`LOG("GetCoverDRLevel: ABORT - No ability template!", default.ENABLE_LOGGING, 'LWotCArmorMatters');
+		return CT_None;
+	}
+
 	// Early return: Are we exempting melee from cover DR?
 	HitCalc = X2AbilityToHitCalc_StandardAim(AbilityTemplate.AbilityToHitCalc);
-	if (!default.COVER_DR_AFFECTS_MELEE && ((HitCalc != none && HitCalc.bMeleeAttack) || AbilityTemplate.AbilityTargetStyle.IsA('X2AbilityTarget_MovingMelee')))
+	if (!default.COVER_DR_AFFECTS_MELEE && ((HitCalc != none && HitCalc.bMeleeAttack) || (AbilityTemplate.AbilityTargetStyle != none && AbilityTemplate.AbilityTargetStyle.IsA('X2AbilityTarget_MovingMelee'))))
 	{
 		`LOG("GetCoverDRLevel: ABORT - Is a melee attack!", default.ENABLE_LOGGING, 'LWotCArmorMatters');
 		return CT_None;
@@ -83,18 +88,17 @@ static simulated function ECoverType GetCoverDRLevel(XComGameState_Unit SourceUn
 	// Are we actually in cover? What's our cover bonus? We're about to find out.
 	TargetCover = CT_None;
 	CalculatedFromEpicenter = false;
+	TargetVector = class'XComWorldData'.static.GetWorldData().GetPositionFromTileCoordinates(TargetUnit.TileLocation);
 	VisibilityMgr = `TACTICALRULES.VisibilityMgr;
 	if (VisibilityMgr.GetVisibilityInfo(SourceUnit.ObjectID, TargetUnit.ObjectID, VisInfo, HistoryIndex))
 	{
 		TargetCover = VisInfo.TargetCover;
 
-		// Explosive AoE handling
 		IsAreaOfEffect = CheckIsExplosion(AbilityTemplate);
 		if (IsAreaOfEffect)
 		{
-			if (HitLocations.Length == 1) 
+			if (HitLocations.Length > 0) 
 			{
-				// Early return: Are we exempting AoEs from cover DR?
 				if (default.COVER_DR_IGNORES_EXPLOSIONS) 
 				{
 					`LOG("GetCoverDRLevel: ABORT - Ignoring explosions!", default.ENABLE_LOGGING,'LWotCArmorMatters');
@@ -102,13 +106,19 @@ static simulated function ECoverType GetCoverDRLevel(XComGameState_Unit SourceUn
 				} 
 				else if (!default.COVER_DR_CALCULATES_EXPLOSIONS_FROM_ATTACKER)
 				{
-					TargetVector = class'XComWorldData'.static.GetWorldData().GetPositionFromTileCoordinates(TargetUnit.TileLocation);
 					CalculatedFromEpicenter = true;
-					// Anisotropic's choice of angles here feels wrong, like it'll still be calculating against the attacker's position somehow...
-					// but I'm not sure how to get a more appropriate angle... :(
-					TargetCover = class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(HitLocations[0], TargetVector, VisInfo.TargetCoverAngle);
+					// Multi-blast (e.g. Blazing Pinions stage 2): EffectAppliedData has every
+					// TargetLocation but no index for which warhead owns this damage instance.
+					// Nearest location to the target is the best heuristic available; it is
+					// wrong if two blasts overlap a unit or the damaging strike is not closest.
+					Epicenter = GetNearestHitLocation(HitLocations, TargetVector);
+					TargetCover = class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(Epicenter, TargetVector, CoverAngle);
 				}
 			}
+		}
+		else if (CheckIsDirectedAoE(AbilityTemplate))
+		{
+			TargetCover = GetDirectedAoECover(SourceUnit, HitLocations, TargetVector, HistoryIndex);
 		}
 	}
 	else
@@ -148,6 +158,65 @@ static simulated function bool CheckIsExplosion(X2AbilityTemplate AbilityTemplat
 	}
 
 	return false;
+}
+
+static simulated function bool CheckIsDirectedAoE(X2AbilityTemplate AbilityTemplate)
+{
+	if (AbilityTemplate == none || AbilityTemplate.AbilityMultiTargetStyle == none)
+	{
+		return false;
+	}
+
+	return AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Cone')
+		|| AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Line');
+}
+
+// Limited by available data: no warhead index, so pick the closest splash point.
+static simulated function Vector GetNearestHitLocation(array<Vector> HitLocations, Vector TargetVector)
+{
+	local Vector Best, Cycle;
+	local float BestDist, Dist;
+
+	if(HitLocations.Length == 1) // Only one splash point! Convenient!
+		return HitLocations[0];
+
+	Best = HitLocations[0];
+	BestDist = VSize(Best - TargetVector);
+	foreach HitLocations(Cycle)
+	{
+		Dist = VSize(Cycle - TargetVector);
+		if (Dist < BestDist)
+		{
+			BestDist = Dist;
+			Best = Cycle;
+		}
+	}
+
+	return Best;
+}
+
+static simulated function ECoverType GetDirectedAoECover(XComGameState_Unit SourceUnit, array<Vector> HitLocations, Vector TargetVector, optional int HistoryIndex = -1)
+{
+	local XGUnit SourceVisualizer;
+	local Vector Origin, PeekPos;
+	local int CoverIndex, bCanSeeDefaultFromDefault, bRequiresLean;
+	local UnitPeekSide PeekSide;
+	local GameRulesCache_VisibilityInfo PeekVis;
+	local float CoverAngle;
+
+	Origin = class'XComWorldData'.static.GetWorldData().GetPositionFromTileCoordinates(SourceUnit.TileLocation);
+	SourceVisualizer = XGUnit(`XCOMHISTORY.GetVisualizer(SourceUnit.ObjectID));
+
+	if (SourceVisualizer != none && HitLocations.Length > 0)
+	{
+		if (SourceVisualizer.GetDirectionInfoForPosition(HitLocations[0], PeekVis, CoverIndex, PeekSide, bCanSeeDefaultFromDefault, bRequiresLean, , HistoryIndex))
+		{
+			PeekPos = SourceVisualizer.GetExitCoverPosition(CoverIndex, PeekSide, , HistoryIndex);
+			return class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(PeekPos, TargetVector, CoverAngle);
+		}
+	}
+
+	return class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(Origin, TargetVector, CoverAngle);
 }
 
 // Helper function adjusting cover level for minimum cover range.

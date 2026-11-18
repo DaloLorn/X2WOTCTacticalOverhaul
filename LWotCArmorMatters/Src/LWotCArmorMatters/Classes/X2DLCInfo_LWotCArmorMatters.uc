@@ -70,10 +70,10 @@ static event OnPostTemplatesCreated()
     if(default.bEnableArmoredPlating) EditPlatings();
     if(`CoverDR.default.COVER_NO_DEFENSE_IN_MIN_RANGE) {
         class'CHHelpers'.static.GetCDO().AddOverrideCoverLevelCallback(OnOverrideCoverLevel);
-        class'CHHelpers'.static.GetCDO().AddAdjustArmorMitigationCallback(OnAdjustArmorMitigation);
     }
     if(`CoverDR.default.COVER_DR_ENABLED) {
         `CoverDR.static.EditAbilities();
+        class'CHHelpers'.static.GetCDO().AddAdjustArmorMitigationCallback(OnAdjustArmorMitigation);
     }
     if(`DamageOverhaul.default.DAMAGE_OVERHAUL_ENABLED) {
         `CHCDO.AddOverrideDefenseBypassCallback(OnOverrideDefenseBypass);
@@ -89,6 +89,7 @@ static function EditArmors()
     local X2DataTemplate DataTemplate, DiffTemplate;
     local X2ArmorTemplate EqTemplate, ArmorTemplate;
     local int i, TotalAblative, TotalHPMarkUps;
+    local array<name> ConvertedAbilities;
 
     ItemTemplateMgr = class'X2ItemTemplateManager'.static.GetItemTemplateManager();
 
@@ -102,7 +103,7 @@ static function EditArmors()
             `LOG("EqTemplate = " $ EqTemplate, default.bEnableLog, 'LWotCArmorMatters');
             // Converts all HP bonuses to Ablative (if not done already)
             // and then returns total HP bonuses for display on UI
-            TotalHPMarkUps = ConvertHPToAblative(EqTemplate.Abilities);            
+            TotalHPMarkUps = ConvertHPToAblative(EqTemplate.Abilities, ConvertedAbilities);            
             
             `LOG("---TotalHPMarkUps = " $ TotalHPMarkUps, default.bEnableLog, 'LWotCArmorMatters');
             if (TotalHPMarkUps < 0) continue;
@@ -230,7 +231,7 @@ static function EditPlating(name AbilityName, int ArmorBonus) {
     }
 }
 
-static function int ConvertHPToAblative(array<name> Abilities)
+static function int ConvertHPToAblative(array<name> Abilities, out array<name> ConvertedAbilities)
 {    
     local int i, j, TotalHPMarkUpsForAbility, TotalHPMarkUps, TotalAblative;
     local X2AbilityTemplateManager AbilityTemplateManager;
@@ -238,6 +239,7 @@ static function int ConvertHPToAblative(array<name> Abilities)
     local X2Effect Effect;
     local X2Effect_PersistentStatChange Effect_PersistentStatChange;
     local StatChange StatChange;
+    local bool bAlreadyConverted;
 
     AbilityTemplateManager = class'X2AbilityTemplateManager'.static.GetAbilityTemplateManager();    
     
@@ -252,6 +254,7 @@ static function int ConvertHPToAblative(array<name> Abilities)
         if (AbilityTemplate != none)
         {   
             `LOG("------AbilityTemplate = " $ AbilityTemplate, default.bEnableLog, 'LWotCArmorMatters');     
+            bAlreadyConverted = ConvertedAbilities.Find(Abilities[i]) != INDEX_NONE;
             
             foreach AbilityTemplate.AbilityTargetEffects(Effect)            
             {                
@@ -277,7 +280,7 @@ static function int ConvertHPToAblative(array<name> Abilities)
                             TotalHPMarkUpsForAbility += StatChange.StatAmount;
                             
                             //Remove StatChange if its eStat_HP
-                            if (default.bStripArmorHP)
+                            if (default.bStripArmorHP && !bAlreadyConverted)
                             {
                                 `LOG("------------Removing " $ StatChange.StatType $ ":" $ StatChange.StatAmount, default.bEnableLog, 'LWotCArmorMatters');
                                 Effect_PersistentStatChange.m_aStatChanges.Remove(j, 1); j--;
@@ -292,7 +295,7 @@ static function int ConvertHPToAblative(array<name> Abilities)
                         }
                     }
 
-                    if (TotalHPMarkUpsForAbility > 0)
+                    if (TotalHPMarkUpsForAbility > 0 && !bAlreadyConverted)
                     {
                         //Replace what was removed with ablative                        
                         if (default.iAblativeMultiplier > 1)
@@ -304,6 +307,11 @@ static function int ConvertHPToAblative(array<name> Abilities)
                         `LOG("------------Added eStat_ShieldHP: " $ TotalHPMarkUpsForAbility, default.bEnableLog, 'LWotCArmorMatters');
                     }
                 }
+            }
+
+            if (!bAlreadyConverted)
+            {
+                ConvertedAbilities.AddItem(Abilities[i]);
             }
         }
     }
@@ -348,12 +356,14 @@ static function EHLDelegateReturn OnOverrideCoverLevel(XComGameState_Unit UnitSt
 static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out int ArmorMitigation, out int ArmorPiercing, out int MinMitigation, out int ArmorShred, EffectAppliedData ApplyEffectParams, X2Effect_ApplyWeaponDamage DamageEffect, optional bool IsMinDamagePreview, optional XComGameState GameState) {
     local ECoverType TargetCover;
     local float CoverDR, CoverDRMult;
-    local int NetCoverDR;
+    local int NetCoverDR, OriginalArmor, CoverFlyover;
     local StateObjectReference EffectRef;
     local X2Effect_CoverDRModifier Effect;
+    local XComGameState_Effect EffectState;
 
     local XComGameState_Unit kSourceUnit, kTarget;
     local XComGameState_Ability kAbility;
+    local X2AbilityTemplate AbilityTemplate;
     local Array<Vector> HitLocations;
     local bool IsDamagePreview;
     
@@ -381,6 +391,22 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
         if(GameState == none) {
             `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
         }
+        else if (kTarget != none) {
+            kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
+            kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
+        }
+        return EHLDR_NoInterrupt;
+    }
+
+    CoverDRMult = 1;
+    AbilityTemplate = kAbility.GetMyTemplate();
+    if (AbilityTemplate == none)
+    {
+		`LOG("OnAdjustArmorMitigation: ABORT - Ability template is invalid!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+
+        if(GameState == none) {
+            `LOG("OnAdjustArmorMitigation: Preview event exited with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        }
         else {
             kTarget.SetUnitFloatValue('DL_NetCoverDR', 0);
             kTarget.SetUnitFloatValue('DL_CoverLevel', 0);
@@ -389,12 +415,11 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     }
 
     if(GameState == none) {
-        `LOG("OnAdjustArmorMitigation: Preview event objects are: Source = " $ kSourceUnit.GetFullName() $ ", Target = " $ kTarget.GetFullName() $ ", Ability = " $ kAbility.GetMyTemplate().DataName, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
+        `LOG("OnAdjustArmorMitigation: Preview event objects are: Source = " $ kSourceUnit.GetFullName() $ ", Target = " $ kTarget.GetFullName() $ ", Ability = " $ AbilityTemplate.DataName, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
     }
 
-    CoverDRMult = 1;
-    StandardAim = X2AbilityToHitCalc_StandardAim(kAbility.GetMyTemplate().AbilityToHitCalc);
-	if (!`CoverDR.default.COVER_DR_AFFECTS_MELEE && ((StandardAim != none && StandardAim.bMeleeAttack) || kAbility.GetMyTemplate().AbilityTargetStyle.IsA('X2AbilityTarget_MovingMelee')))
+    StandardAim = X2AbilityToHitCalc_StandardAim(AbilityTemplate.AbilityToHitCalc);
+	if (!`CoverDR.default.COVER_DR_AFFECTS_MELEE && ((StandardAim != none && StandardAim.bMeleeAttack) || (AbilityTemplate.AbilityTargetStyle != none && AbilityTemplate.AbilityTargetStyle.IsA('X2AbilityTarget_MovingMelee'))))
 	{
 		`LOG("OnAdjustArmorMitigation: ABORT - Is a melee attack!", `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
 
@@ -452,7 +477,10 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
         CoverDRMult += `CoverDR.default.HUNKER_DR_MODIFIER;
 
     foreach kTarget.AffectedByEffects(EffectRef) {
-        Effect = X2Effect_CoverDRModifier(XComGameState_Effect(History.GetGameStateForObjectID(EffectRef.ObjectID)).GetX2Effect());
+        EffectState = XComGameState_Effect(History.GetGameStateForObjectID(EffectRef.ObjectID));
+        if(EffectState == none)
+            continue;
+        Effect = X2Effect_CoverDRModifier(EffectState.GetX2Effect());
         if(Effect == none)
             continue;
         CoverDRMult += Effect.Magnitude;
@@ -473,7 +501,7 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     HitLocations = ApplyEffectParams.AbilityInputContext.TargetLocations;
     IsDamagePreview = GameState == none;
 
-    TargetCover = `CoverDR.static.GetCoverDRLevel(kSourceUnit, kTarget, kAbility.GetMyTemplate(), HitLocations, GameState == none);
+    TargetCover = `CoverDR.static.GetCoverDRLevel(kSourceUnit, kTarget, AbilityTemplate, HitLocations, GameState == none);
     // It's a *tad* too soon to calculate against incoming damage,
     // as we may have to deal with explosive falloff possibly setting damage to zero...
     // but to be fair, that *is* consistent with regular armor!
@@ -515,12 +543,19 @@ static function EHLDelegateReturn OnAdjustArmorMitigation(int WeaponDamage, out 
     `LOG("Cover DR! Multiplier: " $ CoverDRMult $ " Cover DR value: " $ NetCoverDR $ " Leftover armor piercing value: " $ ArmorPiercing - ArmorMitigation, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
 
     ArmorMitigation += NetCoverDR;
+    OriginalArmor = ArmorMitigation - NetCoverDR;
+    // Show the full cover DR unless leftover pierce ate all of it.
+    CoverFlyover = NetCoverDR;
+    if (!`CoverDR.default.COVER_DR_IMPENETRABLE && Max(0, ArmorPiercing - OriginalArmor) >= NetCoverDR)
+    {
+        CoverFlyover = 0;
+    }
 
     if(GameState == none) {
         `LOG("OnAdjustArmorMitigation: Preview event returned with args: WeaponDamage = " $ WeaponDamage $ ", ArmorMitigation = " $ ArmorMitigation $ ", ArmorPiercing = " $ ArmorPiercing $ ", MinMitigation = " $ MinMitigation $ ", SourceID = " $ ApplyEffectParams.SourceStateObjectRef.ObjectID $ ", TargetID = " $ ApplyEffectParams.TargetStateObjectRef.ObjectID $ ", AbilityID = " $ ApplyEffectParams.AbilityStateObjectRef.ObjectID $ ", IsMinDamagePreview = " $ IsMinDamagePreview, `CoverDR.default.ENABLE_LOGGING, 'LWotCArmorMatters');
     }
     else {
-        kTarget.SetUnitFloatValue('DL_NetCoverDR', max(MinMitigation, NetCoverDR - (ArmorPiercing - (ArmorMitigation - NetCoverDR))));
+        kTarget.SetUnitFloatValue('DL_NetCoverDR', CoverFlyover);
         kTarget.SetUnitFloatValue('DL_CoverLevel', TargetCover);
     }
     return EHLDR_NoInterrupt;

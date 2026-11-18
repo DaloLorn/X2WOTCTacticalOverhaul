@@ -15,8 +15,18 @@ simulated function ClonePersistentEffect(X2Effect_Persistent Source, float _Magn
     iNumTurns = Source.iNumTurns;
     bInfiniteDuration = Source.bInfiniteDuration;
     bRemoveWhenSourceDies = Source.bRemoveWhenSourceDies;
+    bRemoveWhenTargetDies = Source.bRemoveWhenTargetDies;
+    bRemoveWhenSourceDamaged = Source.bRemoveWhenSourceDamaged;
+    bRemoveWhenTargetConcealmentBroken = Source.bRemoveWhenTargetConcealmentBroken;
     bIgnorePlayerCheckOnTick = Source.bIgnorePlayerCheckOnTick;
     WatchRule = Source.WatchRule;
+    DuplicateResponse = Source.DuplicateResponse;
+    bUniqueTarget = Source.bUniqueTarget;
+    bDupeForSameSourceOnly = Source.bDupeForSameSourceOnly;
+    bStackOnRefresh = Source.bStackOnRefresh;
+    bTickWhenApplied = Source.bTickWhenApplied;
+    ApplyOnTick = Source.ApplyOnTick;
+    bDisplayInSpecialDamageMessageUI = Source.bDisplayInSpecialDamageMessageUI;
     
     BuffCategory = Source.BuffCategory;
     FriendlyName = Source.FriendlyName;
