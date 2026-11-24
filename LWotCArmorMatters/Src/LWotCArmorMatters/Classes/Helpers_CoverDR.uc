@@ -116,10 +116,6 @@ static simulated function ECoverType GetCoverDRLevel(XComGameState_Unit SourceUn
 				}
 			}
 		}
-		else if (CheckIsDirectedAoE(AbilityTemplate))
-		{
-			TargetCover = GetDirectedAoECover(SourceUnit, HitLocations, TargetVector, HistoryIndex);
-		}
 	}
 	else
 	{
@@ -152,23 +148,9 @@ static simulated function bool CheckIsExplosion(X2AbilityTemplate AbilityTemplat
 		return false;
 	}
 
-	if (AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Radius'))
-	{
-		return true;
-	}
-
-	return false;
-}
-
-static simulated function bool CheckIsDirectedAoE(X2AbilityTemplate AbilityTemplate)
-{
-	if (AbilityTemplate == none || AbilityTemplate.AbilityMultiTargetStyle == none)
-	{
-		return false;
-	}
-
-	return AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Cone')
-		|| AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Line');
+	// Cone extends Radius. Treat only true radius (grenade/blaster/pinions) as explosions.
+	return AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Radius')
+		&& !AbilityTemplate.AbilityMultiTargetStyle.IsA('X2AbilityMultiTarget_Cone');
 }
 
 // Limited by available data: no warhead index, so pick the closest splash point.
@@ -193,30 +175,6 @@ static simulated function Vector GetNearestHitLocation(array<Vector> HitLocation
 	}
 
 	return Best;
-}
-
-static simulated function ECoverType GetDirectedAoECover(XComGameState_Unit SourceUnit, array<Vector> HitLocations, Vector TargetVector, optional int HistoryIndex = -1)
-{
-	local XGUnit SourceVisualizer;
-	local Vector Origin, PeekPos;
-	local int CoverIndex, bCanSeeDefaultFromDefault, bRequiresLean;
-	local UnitPeekSide PeekSide;
-	local GameRulesCache_VisibilityInfo PeekVis;
-	local float CoverAngle;
-
-	Origin = class'XComWorldData'.static.GetWorldData().GetPositionFromTileCoordinates(SourceUnit.TileLocation);
-	SourceVisualizer = XGUnit(`XCOMHISTORY.GetVisualizer(SourceUnit.ObjectID));
-
-	if (SourceVisualizer != none && HitLocations.Length > 0)
-	{
-		if (SourceVisualizer.GetDirectionInfoForPosition(HitLocations[0], PeekVis, CoverIndex, PeekSide, bCanSeeDefaultFromDefault, bRequiresLean, , HistoryIndex))
-		{
-			PeekPos = SourceVisualizer.GetExitCoverPosition(CoverIndex, PeekSide, , HistoryIndex);
-			return class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(PeekPos, TargetVector, CoverAngle);
-		}
-	}
-
-	return class'XComWorldData'.static.GetWorldData().GetCoverTypeForTarget(Origin, TargetVector, CoverAngle);
 }
 
 // Helper function adjusting cover level for minimum cover range.
